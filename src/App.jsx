@@ -174,11 +174,188 @@ function analyzeStock(sym, prices, question = "") {
   return { action, confidence, reasoning, entryPrice, targetPrice, stopLoss, riskLevel, summary, score, rsi, ma10, ma20, recentTrend, change1d };
 }
 
-// ─── SEARCH PROMPT ─────────────────────────────────────────────────────────
-const SEARCH_SYSTEM = `You are a global stock market database. Return up to 6 stocks matching the query from any exchange worldwide.
-Respond ONLY with a valid JSON array, no markdown, no code fences.
-Each element must have: symbol, name, exchange, sector, country (2-letter ISO), currency (ISO code), basePrice (number).
-Use accurate current tickers. Examples: Reliance=RELIANCE.NS, Samsung=005930.KS, HSBC=HSBA.L, BHP=BHP.AX, Alibaba=9988.HK, Toyota=7203.T`;
+// ─── BUILT-IN GLOBAL STOCK DATABASE (no API needed) ───────────────────────
+const GLOBAL_STOCKS = [
+  // ── United States ──
+  { symbol:"AAPL",  name:"Apple Inc.",                  exchange:"NASDAQ", sector:"Technology",      country:"US", currency:"USD", basePrice:211.00 },
+  { symbol:"MSFT",  name:"Microsoft Corp.",             exchange:"NASDAQ", sector:"Technology",      country:"US", currency:"USD", basePrice:457.00 },
+  { symbol:"NVDA",  name:"NVIDIA Corp.",                exchange:"NASDAQ", sector:"Semiconductors",  country:"US", currency:"USD", basePrice:135.00 },
+  { symbol:"GOOGL", name:"Alphabet Inc.",               exchange:"NASDAQ", sector:"Technology",      country:"US", currency:"USD", basePrice:178.00 },
+  { symbol:"AMZN",  name:"Amazon.com Inc.",             exchange:"NASDAQ", sector:"E-Commerce",      country:"US", currency:"USD", basePrice:225.00 },
+  { symbol:"META",  name:"Meta Platforms Inc.",         exchange:"NASDAQ", sector:"Social Media",    country:"US", currency:"USD", basePrice:612.00 },
+  { symbol:"TSLA",  name:"Tesla Inc.",                  exchange:"NASDAQ", sector:"EV / Auto",       country:"US", currency:"USD", basePrice:342.00 },
+  { symbol:"BRK.B", name:"Berkshire Hathaway B",        exchange:"NYSE",   sector:"Financials",      country:"US", currency:"USD", basePrice:463.00 },
+  { symbol:"JPM",   name:"JPMorgan Chase & Co.",        exchange:"NYSE",   sector:"Banking",         country:"US", currency:"USD", basePrice:258.00 },
+  { symbol:"V",     name:"Visa Inc.",                   exchange:"NYSE",   sector:"Payments",        country:"US", currency:"USD", basePrice:356.00 },
+  { symbol:"JNJ",   name:"Johnson & Johnson",           exchange:"NYSE",   sector:"Healthcare",      country:"US", currency:"USD", basePrice:157.00 },
+  { symbol:"WMT",   name:"Walmart Inc.",                exchange:"NYSE",   sector:"Retail",          country:"US", currency:"USD", basePrice:104.00 },
+  { symbol:"XOM",   name:"Exxon Mobil Corp.",           exchange:"NYSE",   sector:"Energy",          country:"US", currency:"USD", basePrice:112.00 },
+  { symbol:"MA",    name:"Mastercard Inc.",             exchange:"NYSE",   sector:"Payments",        country:"US", currency:"USD", basePrice:567.00 },
+  { symbol:"UNH",   name:"UnitedHealth Group",          exchange:"NYSE",   sector:"Healthcare",      country:"US", currency:"USD", basePrice:311.00 },
+  { symbol:"PG",    name:"Procter & Gamble Co.",        exchange:"NYSE",   sector:"Consumer Goods",  country:"US", currency:"USD", basePrice:172.00 },
+  { symbol:"HD",    name:"Home Depot Inc.",             exchange:"NYSE",   sector:"Retail",          country:"US", currency:"USD", basePrice:388.00 },
+  { symbol:"BAC",   name:"Bank of America Corp.",       exchange:"NYSE",   sector:"Banking",         country:"US", currency:"USD", basePrice:45.00  },
+  { symbol:"KO",    name:"Coca-Cola Co.",               exchange:"NYSE",   sector:"Beverages",       country:"US", currency:"USD", basePrice:73.00  },
+  { symbol:"ABBV",  name:"AbbVie Inc.",                 exchange:"NYSE",   sector:"Pharma",          country:"US", currency:"USD", basePrice:198.00 },
+  { symbol:"CVX",   name:"Chevron Corp.",               exchange:"NYSE",   sector:"Energy",          country:"US", currency:"USD", basePrice:154.00 },
+  { symbol:"MRK",   name:"Merck & Co.",                 exchange:"NYSE",   sector:"Pharma",          country:"US", currency:"USD", basePrice:92.00  },
+  { symbol:"LLY",   name:"Eli Lilly & Co.",             exchange:"NYSE",   sector:"Pharma",          country:"US", currency:"USD", basePrice:810.00 },
+  { symbol:"PEP",   name:"PepsiCo Inc.",                exchange:"NASDAQ", sector:"Beverages",       country:"US", currency:"USD", basePrice:144.00 },
+  { symbol:"AMD",   name:"Advanced Micro Devices",      exchange:"NASDAQ", sector:"Semiconductors",  country:"US", currency:"USD", basePrice:168.00 },
+  { symbol:"INTC",  name:"Intel Corp.",                 exchange:"NASDAQ", sector:"Semiconductors",  country:"US", currency:"USD", basePrice:21.00  },
+  { symbol:"NFLX",  name:"Netflix Inc.",                exchange:"NASDAQ", sector:"Streaming",       country:"US", currency:"USD", basePrice:1290.00},
+  { symbol:"ADBE",  name:"Adobe Inc.",                  exchange:"NASDAQ", sector:"Software",        country:"US", currency:"USD", basePrice:390.00 },
+  { symbol:"CRM",   name:"Salesforce Inc.",             exchange:"NYSE",   sector:"Software",        country:"US", currency:"USD", basePrice:298.00 },
+  { symbol:"PYPL",  name:"PayPal Holdings",             exchange:"NASDAQ", sector:"Fintech",         country:"US", currency:"USD", basePrice:72.00  },
+  { symbol:"DIS",   name:"Walt Disney Co.",             exchange:"NYSE",   sector:"Entertainment",   country:"US", currency:"USD", basePrice:102.00 },
+  { symbol:"UBER",  name:"Uber Technologies",           exchange:"NYSE",   sector:"Rideshare",       country:"US", currency:"USD", basePrice:88.00  },
+  { symbol:"SPOT",  name:"Spotify Technology",          exchange:"NYSE",   sector:"Streaming",       country:"US", currency:"USD", basePrice:690.00 },
+  { symbol:"COIN",  name:"Coinbase Global",             exchange:"NASDAQ", sector:"Crypto / Fintech",country:"US", currency:"USD", basePrice:245.00 },
+  { symbol:"PLTR",  name:"Palantir Technologies",       exchange:"NYSE",   sector:"AI / Data",       country:"US", currency:"USD", basePrice:121.00 },
+  { symbol:"SNOW",  name:"Snowflake Inc.",              exchange:"NYSE",   sector:"Cloud / Data",    country:"US", currency:"USD", basePrice:188.00 },
+  { symbol:"NET",   name:"Cloudflare Inc.",             exchange:"NYSE",   sector:"Cloud Security",  country:"US", currency:"USD", basePrice:132.00 },
+  { symbol:"GS",    name:"Goldman Sachs Group",         exchange:"NYSE",   sector:"Banking",         country:"US", currency:"USD", basePrice:582.00 },
+  { symbol:"MS",    name:"Morgan Stanley",              exchange:"NYSE",   sector:"Banking",         country:"US", currency:"USD", basePrice:134.00 },
+  { symbol:"BA",    name:"Boeing Co.",                  exchange:"NYSE",   sector:"Aerospace",       country:"US", currency:"USD", basePrice:189.00 },
+  { symbol:"CAT",   name:"Caterpillar Inc.",            exchange:"NYSE",   sector:"Industrials",     country:"US", currency:"USD", basePrice:368.00 },
+  { symbol:"GE",    name:"GE Aerospace",                exchange:"NYSE",   sector:"Aerospace",       country:"US", currency:"USD", basePrice:222.00 },
+  { symbol:"F",     name:"Ford Motor Co.",              exchange:"NYSE",   sector:"Auto",            country:"US", currency:"USD", basePrice:11.00  },
+  { symbol:"GM",    name:"General Motors Co.",          exchange:"NYSE",   sector:"Auto",            country:"US", currency:"USD", basePrice:52.00  },
+  { symbol:"RIVN",  name:"Rivian Automotive",          exchange:"NASDAQ", sector:"EV",              country:"US", currency:"USD", basePrice:14.00  },
+  { symbol:"LCID",  name:"Lucid Group",                exchange:"NASDAQ", sector:"EV",              country:"US", currency:"USD", basePrice:2.80  },
+  { symbol:"SHOP",  name:"Shopify Inc.",               exchange:"NYSE",   sector:"E-Commerce",      country:"CA", currency:"USD", basePrice:108.00 },
+  // ── United Kingdom ──
+  { symbol:"HSBA.L",  name:"HSBC Holdings",            exchange:"LSE",    sector:"Banking",         country:"GB", currency:"GBP", basePrice:820.00 },
+  { symbol:"SHEL.L",  name:"Shell PLC",                exchange:"LSE",    sector:"Energy",          country:"GB", currency:"GBP", basePrice:2620.00},
+  { symbol:"AZN.L",   name:"AstraZeneca PLC",          exchange:"LSE",    sector:"Pharma",          country:"GB", currency:"GBP", basePrice:12800.0},
+  { symbol:"BP.L",    name:"BP PLC",                   exchange:"LSE",    sector:"Energy",          country:"GB", currency:"GBP", basePrice:392.00 },
+  { symbol:"ULVR.L",  name:"Unilever PLC",             exchange:"LSE",    sector:"Consumer Goods",  country:"GB", currency:"GBP", basePrice:4220.00},
+  { symbol:"GSK.L",   name:"GSK PLC",                  exchange:"LSE",    sector:"Pharma",          country:"GB", currency:"GBP", basePrice:1580.00},
+  { symbol:"RIO.L",   name:"Rio Tinto PLC",            exchange:"LSE",    sector:"Mining",          country:"GB", currency:"GBP", basePrice:4820.00},
+  { symbol:"DGE.L",   name:"Diageo PLC",               exchange:"LSE",    sector:"Beverages",       country:"GB", currency:"GBP", basePrice:2320.00},
+  { symbol:"LSEG.L",  name:"London Stock Exchange Grp",exchange:"LSE",    sector:"Financials",      country:"GB", currency:"GBP", basePrice:10800.0},
+  { symbol:"LLOY.L",  name:"Lloyds Banking Group",     exchange:"LSE",    sector:"Banking",         country:"GB", currency:"GBP", basePrice:64.00  },
+  { symbol:"BARC.L",  name:"Barclays PLC",             exchange:"LSE",    sector:"Banking",         country:"GB", currency:"GBP", basePrice:290.00 },
+  { symbol:"VOD.L",   name:"Vodafone Group",           exchange:"LSE",    sector:"Telecom",         country:"GB", currency:"GBP", basePrice:72.00  },
+  // ── India ──
+  { symbol:"RELIANCE.NS", name:"Reliance Industries",  exchange:"NSE",    sector:"Conglomerate",    country:"IN", currency:"INR", basePrice:1285.00},
+  { symbol:"TCS.NS",      name:"Tata Consultancy Svcs",exchange:"NSE",    sector:"IT Services",     country:"IN", currency:"INR", basePrice:3420.00},
+  { symbol:"HDFCBANK.NS", name:"HDFC Bank",            exchange:"NSE",    sector:"Banking",         country:"IN", currency:"INR", basePrice:1920.00},
+  { symbol:"INFY.NS",     name:"Infosys Ltd.",         exchange:"NSE",    sector:"IT Services",     country:"IN", currency:"INR", basePrice:1580.00},
+  { symbol:"ICICIBANK.NS",name:"ICICI Bank",           exchange:"NSE",    sector:"Banking",         country:"IN", currency:"INR", basePrice:1440.00},
+  { symbol:"HINDUNILVR.NS",name:"Hindustan Unilever",  exchange:"NSE",    sector:"Consumer Goods",  country:"IN", currency:"INR", basePrice:2340.00},
+  { symbol:"WIPRO.NS",    name:"Wipro Ltd.",           exchange:"NSE",    sector:"IT Services",     country:"IN", currency:"INR", basePrice:298.00 },
+  { symbol:"BAJFINANCE.NS",name:"Bajaj Finance",       exchange:"NSE",    sector:"Financials",      country:"IN", currency:"INR", basePrice:8950.00},
+  { symbol:"ADANIENT.NS", name:"Adani Enterprises",   exchange:"NSE",    sector:"Conglomerate",    country:"IN", currency:"INR", basePrice:2820.00},
+  { symbol:"TATAMOTORS.NS",name:"Tata Motors",         exchange:"NSE",    sector:"Auto",            country:"IN", currency:"INR", basePrice:788.00 },
+  { symbol:"ONGC.NS",     name:"ONGC",                 exchange:"NSE",    sector:"Energy",          country:"IN", currency:"INR", basePrice:242.00 },
+  { symbol:"SBIN.NS",     name:"State Bank of India",  exchange:"NSE",    sector:"Banking",         country:"IN", currency:"INR", basePrice:812.00 },
+  // ── Japan ──
+  { symbol:"7203.T",  name:"Toyota Motor Corp.",       exchange:"TSE",    sector:"Auto",            country:"JP", currency:"JPY", basePrice:3520.00},
+  { symbol:"6758.T",  name:"Sony Group Corp.",         exchange:"TSE",    sector:"Electronics",     country:"JP", currency:"JPY", basePrice:2680.00},
+  { symbol:"9984.T",  name:"SoftBank Group Corp.",     exchange:"TSE",    sector:"Technology",      country:"JP", currency:"JPY", basePrice:9200.00},
+  { symbol:"6861.T",  name:"Keyence Corp.",            exchange:"TSE",    sector:"Industrials",     country:"JP", currency:"JPY", basePrice:65800.0},
+  { symbol:"7974.T",  name:"Nintendo Co.",             exchange:"TSE",    sector:"Gaming",          country:"JP", currency:"JPY", basePrice:7820.00},
+  { symbol:"9432.T",  name:"NTT Corp.",                exchange:"TSE",    sector:"Telecom",         country:"JP", currency:"JPY", basePrice:154.00 },
+  { symbol:"8306.T",  name:"Mitsubishi UFJ Financial", exchange:"TSE",    sector:"Banking",         country:"JP", currency:"JPY", basePrice:1540.00},
+  { symbol:"6501.T",  name:"Hitachi Ltd.",             exchange:"TSE",    sector:"Industrials",     country:"JP", currency:"JPY", basePrice:3820.00},
+  // ── China / Hong Kong ──
+  { symbol:"9988.HK", name:"Alibaba Group",            exchange:"HKEX",   sector:"E-Commerce",      country:"HK", currency:"HKD", basePrice:92.00  },
+  { symbol:"0700.HK", name:"Tencent Holdings",         exchange:"HKEX",   sector:"Technology",      country:"HK", currency:"HKD", basePrice:420.00 },
+  { symbol:"9618.HK", name:"JD.com Inc.",              exchange:"HKEX",   sector:"E-Commerce",      country:"HK", currency:"HKD", basePrice:132.00 },
+  { symbol:"3690.HK", name:"Meituan",                  exchange:"HKEX",   sector:"Food Delivery",   country:"HK", currency:"HKD", basePrice:158.00 },
+  { symbol:"9999.HK", name:"NetEase Inc.",             exchange:"HKEX",   sector:"Gaming",          country:"HK", currency:"HKD", basePrice:142.00 },
+  { symbol:"1299.HK", name:"AIA Group",                exchange:"HKEX",   sector:"Insurance",       country:"HK", currency:"HKD", basePrice:62.00  },
+  { symbol:"0941.HK", name:"China Mobile",             exchange:"HKEX",   sector:"Telecom",         country:"HK", currency:"HKD", basePrice:78.00  },
+  { symbol:"BABA",    name:"Alibaba Group (US ADR)",   exchange:"NYSE",   sector:"E-Commerce",      country:"CN", currency:"USD", basePrice:122.00 },
+  { symbol:"PDD",     name:"PDD Holdings (Temu)",      exchange:"NASDAQ", sector:"E-Commerce",      country:"CN", currency:"USD", basePrice:98.00  },
+  { symbol:"BIDU",    name:"Baidu Inc.",               exchange:"NASDAQ", sector:"Technology",      country:"CN", currency:"USD", basePrice:84.00  },
+  { symbol:"NIO",     name:"NIO Inc.",                 exchange:"NYSE",   sector:"EV",              country:"CN", currency:"USD", basePrice:4.20  },
+  { symbol:"XPEV",    name:"XPeng Inc.",               exchange:"NYSE",   sector:"EV",              country:"CN", currency:"USD", basePrice:18.00  },
+  { symbol:"LI",      name:"Li Auto Inc.",             exchange:"NASDAQ", sector:"EV",              country:"CN", currency:"USD", basePrice:24.00  },
+  // ── South Korea ──
+  { symbol:"005930.KS", name:"Samsung Electronics",    exchange:"KRX",    sector:"Electronics",     country:"KR", currency:"KRW", basePrice:58000.0},
+  { symbol:"000660.KS", name:"SK Hynix",               exchange:"KRX",    sector:"Semiconductors",  country:"KR", currency:"KRW", basePrice:198000. },
+  { symbol:"035420.KS", name:"NAVER Corp.",            exchange:"KRX",    sector:"Technology",      country:"KR", currency:"KRW", basePrice:180000. },
+  { symbol:"005380.KS", name:"Hyundai Motor",          exchange:"KRX",    sector:"Auto",            country:"KR", currency:"KRW", basePrice:192000. },
+  { symbol:"051910.KS", name:"LG Chem",                exchange:"KRX",    sector:"Chemicals / EV",  country:"KR", currency:"KRW", basePrice:280000. },
+  { symbol:"035720.KS", name:"Kakao Corp.",            exchange:"KRX",    sector:"Technology",      country:"KR", currency:"KRW", basePrice:38000.0},
+  // ── Australia ──
+  { symbol:"BHP.AX",  name:"BHP Group",                exchange:"ASX",    sector:"Mining",          country:"AU", currency:"AUD", basePrice:38.50  },
+  { symbol:"CBA.AX",  name:"Commonwealth Bank",        exchange:"ASX",    sector:"Banking",         country:"AU", currency:"AUD", basePrice:163.00 },
+  { symbol:"CSL.AX",  name:"CSL Limited",              exchange:"ASX",    sector:"Biotech",         country:"AU", currency:"AUD", basePrice:288.00 },
+  { symbol:"RIO.AX",  name:"Rio Tinto Ltd.",           exchange:"ASX",    sector:"Mining",          country:"AU", currency:"AUD", basePrice:115.00 },
+  { symbol:"ANZ.AX",  name:"ANZ Banking Group",        exchange:"ASX",    sector:"Banking",         country:"AU", currency:"AUD", basePrice:29.00  },
+  { symbol:"WBC.AX",  name:"Westpac Banking",          exchange:"ASX",    sector:"Banking",         country:"AU", currency:"AUD", basePrice:32.00  },
+  { symbol:"WES.AX",  name:"Wesfarmers Ltd.",          exchange:"ASX",    sector:"Retail",          country:"AU", currency:"AUD", basePrice:78.00  },
+  { symbol:"NAB.AX",  name:"National Australia Bank",  exchange:"ASX",    sector:"Banking",         country:"AU", currency:"AUD", basePrice:38.00  },
+  // ── Canada ──
+  { symbol:"RY.TO",   name:"Royal Bank of Canada",     exchange:"TSX",    sector:"Banking",         country:"CA", currency:"CAD", basePrice:172.00 },
+  { symbol:"TD.TO",   name:"Toronto-Dominion Bank",    exchange:"TSX",    sector:"Banking",         country:"CA", currency:"CAD", basePrice:80.00  },
+  { symbol:"ENB.TO",  name:"Enbridge Inc.",            exchange:"TSX",    sector:"Energy",          country:"CA", currency:"CAD", basePrice:60.00  },
+  { symbol:"CNQ.TO",  name:"Canadian Natural Resources",exchange:"TSX",   sector:"Energy",          country:"CA", currency:"CAD", basePrice:44.00  },
+  { symbol:"BMO.TO",  name:"Bank of Montreal",         exchange:"TSX",    sector:"Banking",         country:"CA", currency:"CAD", basePrice:136.00 },
+  // ── Germany ──
+  { symbol:"SAP.DE",  name:"SAP SE",                   exchange:"XETRA",  sector:"Software",        country:"DE", currency:"EUR", basePrice:238.00 },
+  { symbol:"VOW3.DE", name:"Volkswagen AG",             exchange:"XETRA",  sector:"Auto",            country:"DE", currency:"EUR", basePrice:88.00  },
+  { symbol:"BMW.DE",  name:"BMW AG",                   exchange:"XETRA",  sector:"Auto",            country:"DE", currency:"EUR", basePrice:72.00  },
+  { symbol:"SIE.DE",  name:"Siemens AG",               exchange:"XETRA",  sector:"Industrials",     country:"DE", currency:"EUR", basePrice:192.00 },
+  { symbol:"ALV.DE",  name:"Allianz SE",               exchange:"XETRA",  sector:"Insurance",       country:"DE", currency:"EUR", basePrice:338.00 },
+  { symbol:"BAYN.DE", name:"Bayer AG",                 exchange:"XETRA",  sector:"Pharma",          country:"DE", currency:"EUR", basePrice:19.00  },
+  { symbol:"ADS.DE",  name:"Adidas AG",                exchange:"XETRA",  sector:"Sportswear",      country:"DE", currency:"EUR", basePrice:188.00 },
+  // ── France ──
+  { symbol:"MC.PA",   name:"LVMH",                     exchange:"Euronext",sector:"Luxury",         country:"FR", currency:"EUR", basePrice:576.00 },
+  { symbol:"OR.PA",   name:"L'Oréal",                  exchange:"Euronext",sector:"Cosmetics",      country:"FR", currency:"EUR", basePrice:342.00 },
+  { symbol:"TTE.PA",  name:"TotalEnergies SE",         exchange:"Euronext",sector:"Energy",         country:"FR", currency:"EUR", basePrice:58.00  },
+  { symbol:"AIR.PA",  name:"Airbus SE",                exchange:"Euronext",sector:"Aerospace",      country:"FR", currency:"EUR", basePrice:168.00 },
+  { symbol:"BNP.PA",  name:"BNP Paribas",              exchange:"Euronext",sector:"Banking",        country:"FR", currency:"EUR", basePrice:72.00  },
+  // ── Singapore ──
+  { symbol:"D05.SI",  name:"DBS Group Holdings",       exchange:"SGX",    sector:"Banking",         country:"SG", currency:"SGD", basePrice:42.00  },
+  { symbol:"O39.SI",  name:"OCBC Bank",                exchange:"SGX",    sector:"Banking",         country:"SG", currency:"SGD", basePrice:16.80  },
+  { symbol:"U11.SI",  name:"UOB Group",                exchange:"SGX",    sector:"Banking",         country:"SG", currency:"SGD", basePrice:34.00  },
+  { symbol:"Z74.SI",  name:"Singapore Telecom",        exchange:"SGX",    sector:"Telecom",         country:"SG", currency:"SGD", basePrice:3.20   },
+  { symbol:"C38U.SI", name:"CapitaLand Integrated",    exchange:"SGX",    sector:"REITs",           country:"SG", currency:"SGD", basePrice:2.08   },
+  // ── Taiwan ──
+  { symbol:"2330.TW", name:"Taiwan Semiconductor (TSMC)",exchange:"TWSE", sector:"Semiconductors",  country:"TW", currency:"TWD", basePrice:985.00 },
+  { symbol:"TSM",     name:"TSMC (US ADR)",            exchange:"NYSE",   sector:"Semiconductors",  country:"TW", currency:"USD", basePrice:182.00 },
+  { symbol:"2317.TW", name:"Hon Hai Precision (Foxconn)",exchange:"TWSE", sector:"Electronics",     country:"TW", currency:"TWD", basePrice:188.00 },
+  // ── Switzerland ──
+  { symbol:"NESN.SW", name:"Nestlé SA",                exchange:"SIX",    sector:"Food & Beverage", country:"CH", currency:"CHF", basePrice:78.00  },
+  { symbol:"NOVN.SW", name:"Novartis AG",              exchange:"SIX",    sector:"Pharma",          country:"CH", currency:"CHF", basePrice:96.00  },
+  { symbol:"ROG.SW",  name:"Roche Holding AG",         exchange:"SIX",    sector:"Pharma",          country:"CH", currency:"CHF", basePrice:242.00 },
+  // ── Brazil ──
+  { symbol:"PETR4.SA",name:"Petrobras",                exchange:"B3",     sector:"Energy",          country:"BR", currency:"BRL", basePrice:38.00  },
+  { symbol:"VALE3.SA",name:"Vale SA",                  exchange:"B3",     sector:"Mining",          country:"BR", currency:"BRL", basePrice:52.00  },
+  { symbol:"ITUB4.SA",name:"Itaú Unibanco",            exchange:"B3",     sector:"Banking",         country:"BR", currency:"BRL", basePrice:32.00  },
+  // ── Netherlands ──
+  { symbol:"ASML.AS", name:"ASML Holding",             exchange:"Euronext",sector:"Semiconductors", country:"NL", currency:"EUR", basePrice:688.00 },
+  { symbol:"HEIA.AS", name:"Heineken NV",              exchange:"Euronext",sector:"Beverages",      country:"NL", currency:"EUR", basePrice:72.00  },
+  // ── Saudi Arabia ──
+  { symbol:"2222.SR", name:"Saudi Aramco",             exchange:"Tadawul", sector:"Energy",         country:"SA", currency:"SAR", basePrice:28.00  },
+  { symbol:"1180.SR", name:"Al Rajhi Bank",            exchange:"Tadawul", sector:"Banking",        country:"SA", currency:"SAR", basePrice:88.00  },
+  // ── Malaysia ──
+  { symbol:"1155.KL", name:"Maybank",                  exchange:"Bursa",   sector:"Banking",        country:"MY", currency:"MYR", basePrice:10.20  },
+  { symbol:"5681.KL", name:"Petronas Chemicals",       exchange:"Bursa",   sector:"Chemicals",      country:"MY", currency:"MYR", basePrice:5.60   },
+  // ── Indonesia ──
+  { symbol:"BBCA.JK", name:"Bank Central Asia",        exchange:"IDX",    sector:"Banking",         country:"ID", currency:"IDR", basePrice:9800.0 },
+  { symbol:"TLKM.JK", name:"Telkom Indonesia",         exchange:"IDX",    sector:"Telecom",         country:"ID", currency:"IDR", basePrice:2840.0 },
+  // ── South Africa ──
+  { symbol:"NPN.JO",  name:"Naspers Ltd.",             exchange:"JSE",    sector:"Technology",      country:"ZA", currency:"ZAR", basePrice:3200.00},
+  { symbol:"SOL.JO",  name:"Sasol Ltd.",               exchange:"JSE",    sector:"Energy",          country:"ZA", currency:"ZAR", basePrice:112.00 },
+];
+
+// Search the built-in database — no API needed
+function searchGlobalStocks(query) {
+  const q = query.toLowerCase().trim();
+  if (!q) return [];
+  return GLOBAL_STOCKS.filter(s =>
+    s.symbol.toLowerCase().includes(q) ||
+    s.name.toLowerCase().includes(q) ||
+    s.exchange.toLowerCase().includes(q) ||
+    s.sector.toLowerCase().includes(q) ||
+    s.country.toLowerCase() === q
+  ).slice(0, 8);
+}
 
 // ─── MAIN COMPONENT ────────────────────────────────────────────────────────
 export default function TradingAssistant() {
